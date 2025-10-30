@@ -14,7 +14,7 @@ struct TSApp : wxApp {
     wxLocale locale;
     unique_ptr<wxSingleInstanceChecker> instance_checker {nullptr};
 
-    bool OnInit() {
+    bool OnInit() override {
         #if wxUSE_UNICODE == 0
             #error "must use unicode version of wx libs to ensure data integrity of .cts files"
         #endif
@@ -84,7 +84,7 @@ struct TSApp : wxApp {
         return true;
     }
 
-    void OnEventLoopEnter(wxEventLoopBase *WXUNUSED(loop)) {
+    void OnEventLoopEnter(wxEventLoopBase *WXUNUSED(loop)) override {
         if (!initiateventloop) {
             initiateventloop = true;
             frame->AppOnEventLoopEnter();
@@ -92,7 +92,20 @@ struct TSApp : wxApp {
         }
     }
 
-    int OnExit() {
+    #ifdef __WXMAC__
+        void MacOpenFiles(const wxArrayString &filenames) override {
+            if (!sys) return;
+            // MacOpenFiles does not trigger OnEventLoopEnter so we need
+            // to do this manually
+            if (!initiateventloop) {
+                initiateventloop = true;
+                frame->AppOnEventLoopEnter();
+            }
+            for (auto &fn : filenames) { sys->Init(fn); }
+        }
+    #endif
+
+    int OnExit() override {
         DELETEP(sys);
         return 0;
     }
@@ -137,13 +150,6 @@ struct TSApp : wxApp {
         #endif
         return executablepath;
     }
-
-    #ifdef __WXMAC__
-        void MacOpenFiles(const auto &filenames) {
-            if (!sys) return;
-            for (auto &fn : filenames) { sys->Open(fn); }
-        }
-    #endif
 
     #ifdef __WXMSW__
         void DeclareHiDpiAwareOnWindows() {
