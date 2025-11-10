@@ -42,11 +42,17 @@ jobs:
       - name: Package TreeSheets
         run: cmake --build _build --target package -j4
 
-      - name: Remove epoch from .deb filename
+      - name: Sanitize Debian artifact filenames (remove epoch and colons)
         run: |
           shopt -s nullglob
-          for file in _build/treesheets_1*.deb; do
-            mv -v "${file}" "${file/treesheets_1/treesheets_}"
+          for file in _build/treesheets_*.deb; do
+            base="$(basename "$file")"
+            # Drop Debian epoch from filename (e.g., treesheets_2:1.2.3_arm64.deb -> treesheets_1.2.3_arm64.deb)
+            # Replace any remaining colons with '-'
+            sanitized="$(printf '%s' "$base" | sed -E 's/^(treesheets_)[0-9]+:/\1/; s/:/-/g')"
+            if [[ "$sanitized" != "$base" ]]; then
+              mv -v "$file" "_build/$sanitized"
+            fi
           done
 
       - name: Upload artifact
@@ -92,11 +98,15 @@ jobs:
               ctest --test-dir _build --output-on-failure && \
               cmake --build _build --target package -j4"
 
-      - name: Remove epoch from .deb filename
+      - name: Sanitize Debian artifact filenames (remove epoch and colons)
         run: |
           shopt -s nullglob
-          for file in _build/treesheets_1*.deb; do
-            mv -v "${file}" "${file/treesheets_1/treesheets_}"
+          for file in _build/treesheets_*.deb; do
+            base="$(basename "$file")"
+            sanitized="$(printf '%s' "$base" | sed -E 's/^(treesheets_)[0-9]+:/\1/; s/:/-/g')"
+            if [[ "$sanitized" != "$base" ]]; then
+              mv -v "$file" "_build/$sanitized"
+            fi
           done
 
       - name: Upload artifact
