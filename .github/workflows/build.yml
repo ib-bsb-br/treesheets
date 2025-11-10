@@ -45,8 +45,8 @@ jobs:
       - name: Remove epoch from .deb filename
         run: |
           shopt -s nullglob
-          for file in _build/treesheets_1:*.deb; do
-            mv -v "${file}" "${file/treesheets_1:/treesheets_}"
+          for file in _build/treesheets_1*.deb; do
+            mv -v "${file}" "${file/treesheets_1/treesheets_}"
           done
 
       - name: Upload artifact
@@ -95,8 +95,8 @@ jobs:
       - name: Remove epoch from .deb filename
         run: |
           shopt -s nullglob
-          for file in _build/treesheets_1:*.deb; do
-            mv -v "${file}" "${file/treesheets_1:/treesheets_}"
+          for file in _build/treesheets_1*.deb; do
+            mv -v "${file}" "${file/treesheets_1/treesheets_}"
           done
 
       - name: Upload artifact
