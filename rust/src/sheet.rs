@@ -97,7 +97,10 @@ impl Sheet {
     where
         F: FnMut(&Cell, usize),
     {
-        self.root.walk(0, &mut f);
+        self.root.walk(0, &mut |cell, depth| {
+            f(cell, depth);
+            true
+        });
     }
 }
 
@@ -120,6 +123,7 @@ mod tests {
         let mut seen = Vec::new();
         cell.walk(0, &mut |node, depth| {
             seen.push((node.text.clone(), depth));
+            true
         });
 
         assert_eq!(
