@@ -1,0 +1,12 @@
+[package]
+name = "treesheets-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Graphical user interface for TreeSheets (experimental)"
+
+[dependencies]
+treesheets-core = { path = "../treesheets-core" }
+# UI toolkit dependencies will be added after evaluation
+# Candidates: egui, iced, druid, slint

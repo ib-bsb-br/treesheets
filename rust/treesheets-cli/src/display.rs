@@ -1,4 +1,4 @@
-use crate::sheet::{Cell, Sheet};
+use treesheets_core::{Cell, Sheet};
 
 /// Produces a pretty-printed textual view of the sheet hierarchy.
 pub fn format_sheet(sheet: &Sheet) -> String {

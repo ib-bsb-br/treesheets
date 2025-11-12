@@ -1,6 +1,4 @@
 mod display;
-mod io;
-mod sheet;
 
 use std::fs;
 use std::path::PathBuf;
@@ -8,10 +6,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::Value;
+use treesheets_core::{load_sheet, save_sheet, validate_sheet_json, Sheet};
 
 use crate::display::print_sheet;
-use crate::io::{load_sheet, save_sheet, validate_sheet_json};
-use crate::sheet::Sheet;
 
 #[derive(Parser)]
 #[command(name = "TreeSheets RS", author, version, about = "Rust-based TreeSheets prototype", long_about = None)]

@@ -345,16 +345,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "treesheets-rs"
+name = "treesheets-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "serde_json",
+ "treesheets-core",
+]
+
+[[package]]
+name = "treesheets-core"
+version = "0.1.0"
+dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "treesheets-ui"
+version = "0.1.0"
+dependencies = [
+ "treesheets-core",
 ]
 
 [[package]]
