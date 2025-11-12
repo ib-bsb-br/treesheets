@@ -20,6 +20,12 @@ pub enum SheetIoError {
         #[source]
         source: serde_json::Error,
     },
+    #[error("failed to serialize sheet to {path}: {source}")]
+    Serialize {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("failed to write sheet to {path}: {source}")]
     Write {
         path: PathBuf,
@@ -43,10 +49,11 @@ pub fn load_sheet(path: impl AsRef<Path>) -> Result<Sheet, SheetIoError> {
 
 pub fn save_sheet(path: impl AsRef<Path>, sheet: &Sheet) -> Result<(), SheetIoError> {
     let path_ref = path.as_ref();
-    let serialized = serde_json::to_string_pretty(sheet).map_err(|source| SheetIoError::Parse {
-        path: path_ref.to_path_buf(),
-        source,
-    })?;
+    let serialized =
+        serde_json::to_string_pretty(sheet).map_err(|source| SheetIoError::Serialize {
+            path: path_ref.to_path_buf(),
+            source,
+        })?;
 
     fs::write(path_ref, serialized).map_err(|source| SheetIoError::Write {
         path: path_ref.to_path_buf(),

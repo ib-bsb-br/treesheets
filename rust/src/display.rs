@@ -29,9 +29,17 @@ mod tests {
     #[test]
     fn formatting_produces_expected_structure() {
         let formatted = format_sheet(&Sheet::sample());
-        assert!(formatted.contains("# Sample Sheet"));
-        assert!(formatted.contains("- TreeSheets Rust Prototype"));
-        assert!(formatted.contains("  - Personal"));
-        assert!(formatted.contains("    - Notes"));
+        let expected = r#"# Sample Sheet
+- TreeSheets Rust Prototype
+  - Personal
+    - Tasks
+    - Notes
+  - Work
+    - TreeSheets RS
+      - Implement sheet data model
+      - Design CLI workflows
+    - Retrospective
+"#;
+        assert_eq!(formatted, expected);
     }
 }
