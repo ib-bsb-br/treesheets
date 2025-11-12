@@ -35,15 +35,21 @@ impl Cell {
         self.children.push(child);
     }
 
-    /// Provides depth-first traversal over the cell and all descendants.
-    pub fn walk<F>(&self, depth: usize, f: &mut F)
+    /// Provides depth-first traversal over the cell and all descendants, with early termination.
+    /// The closure should return `true` to continue traversal, or `false` to stop.
+    pub fn walk<F>(&self, depth: usize, f: &mut F) -> bool
     where
-        F: FnMut(&Cell, usize),
+        F: FnMut(&Cell, usize) -> bool,
     {
-        f(self, depth);
-        for child in &self.children {
-            child.walk(depth + 1, f);
+        if !f(self, depth) {
+            return false;
         }
+        for child in &self.children {
+            if !child.walk(depth + 1, f) {
+                return false;
+            }
+        }
+        true
     }
 }
 
