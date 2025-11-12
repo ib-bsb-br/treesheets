@@ -97,7 +97,10 @@ impl Sheet {
     where
         F: FnMut(&Cell, usize),
     {
-        self.root.walk(0, &mut f);
+        self.root.walk(0, &mut |cell, depth| {
+            f(cell, depth);
+            true
+        });
     }
 }
 
@@ -120,6 +123,7 @@ mod tests {
         let mut seen = Vec::new();
         cell.walk(0, &mut |node, depth| {
             seen.push((node.text.clone(), depth));
+            true
         });
 
         assert_eq!(
@@ -143,7 +147,19 @@ mod tests {
             labels.push((cell.text.clone(), depth));
         });
 
-        assert_eq!(labels[0], ("TreeSheets Rust Prototype".into(), 0));
-        assert_eq!(labels.len(), 9);
+        assert_eq!(
+            labels,
+            vec![
+                ("TreeSheets Rust Prototype".into(), 0),
+                ("Personal".into(), 1),
+                ("Tasks".into(), 2),
+                ("Notes".into(), 2),
+                ("Work".into(), 1),
+                ("TreeSheets RS".into(), 2),
+                ("Implement sheet data model".into(), 3),
+                ("Design CLI workflows".into(), 3),
+                ("Retrospective".into(), 2),
+            ]
+        );
     }
 }
