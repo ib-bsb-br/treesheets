@@ -8,5 +8,9 @@ description = "Graphical user interface for TreeSheets (experimental)"
 
 [dependencies]
 treesheets-core = { path = "../treesheets-core" }
-# UI toolkit dependencies will be added after evaluation
-# Candidates: egui, iced, druid, slint
+egui = "0.30"
+eframe = "0.30"  # egui framework for native apps
+serde.workspace = true
+
+[dev-dependencies]
+env_logger = "0.11"

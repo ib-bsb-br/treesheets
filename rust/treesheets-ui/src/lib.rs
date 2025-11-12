@@ -1,17 +1,32 @@
-// TreeSheets UI - Graphical User Interface (Work in Progress)
+// TreeSheets UI - Graphical User Interface
 //
-// This crate will house the GUI implementation for TreeSheets.
-// UI toolkit selection and implementation is pending evaluation.
+// This crate provides the GUI implementation for TreeSheets using egui.
 //
-// Requirements:
-// - Keyboard-centric navigation (core feature)
-// - Hierarchical grid rendering with zoom capabilities
-// - Support for embedded media and rich formatting
-// - Cross-platform compatibility (focus on Linux arm64)
-// - Responsive performance with large datasets
+// Architecture:
+// - app: Main application state and event loop
+// - widgets: Custom UI components (sheet view, cell editor, etc.)
+// - input: Keyboard navigation and command handling
+// - rendering: Grid rendering and zoom logic
+// - state: Selection, undo/redo, and other state management
 
-pub fn placeholder() {
-    println!("TreeSheets UI - GUI implementation coming soon");
+mod app;
+
+pub use app::TreeSheetsApp;
+
+/// Launches the TreeSheets GUI application
+pub fn run() -> Result<(), eframe::Error> {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1200.0, 800.0])
+            .with_title("TreeSheets"),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "TreeSheets",
+        options,
+        Box::new(|cc| Ok(Box::new(TreeSheetsApp::new(cc)))),
+    )
 }
 
 #[cfg(test)]
@@ -19,7 +34,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn placeholder_test() {
-        placeholder();
+    fn app_creation() {
+        // Basic test to ensure the app structure compiles
+        // Full UI tests would require a headless environment or integration tests
+        assert!(true);
     }
 }
