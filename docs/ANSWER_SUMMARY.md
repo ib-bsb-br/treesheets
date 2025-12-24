@@ -210,7 +210,7 @@ The algorithm innovatively uses:
 ## Documentation
 
 For complete, current details, see:
-- **HIERARCHY_SWAP.md** - Deep dive with corrected examples and algorithm walkthroughs
+- **HIERARCHY_SWAP.md** - Deep dive with corrected examples, algorithm walkthroughs, flat-sibling merges, and null-slot cleanup drills grounded in the current source
 - **README.md** - Quick reference and index
 
 ---
