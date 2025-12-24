@@ -1,48 +1,107 @@
 # Hierarchy Swap Deep Dive
 
-This document replaces prior hierarchy-swap docs and restates the feature directly from the current source code. It covers prerequisites, code entry points, algorithm flow, and corrected end-to-end examples (including the cases that previously contained mistakes).
+This document replaces prior hierarchy-swap docs and restates the feature directly from the current source code. It covers prerequisites, code entry points, algorithm flow, corrected end-to-end examples (including the cases that previously contained mistakes), and practical test recipes tied to the implementation. The intent is to mirror what the code does today, not an aspirational design.
 
 ## Command Surface
-- **Menu / Shortcut:** Organization → Hierarchy Swap (F8), defined in [`tsframe.h`](../src/tsframe.h#L333-L348).
-- **Action ID:** `A_HSWAP` in [`main.cpp`](../src/main.cpp#L130-L180).
+- **Menu / Shortcut:** Organization → Hierarchy Swap (F8), defined in [`tsframe.h`](../src/tsframe.h#L333-L348). The label reads “Hierarchy Swap” and the tooltip explains that all cells with the selected text are swapped with their parents at the current level (or above).
+- **Action ID:** `A_HSWAP` in [`main.cpp`](../src/main.cpp#L130-L180). This ID connects the menu, keyboard shortcut, and dispatcher switch statement.
 - **Validation and dispatch:** `Document::Action()` at [`document.h`](../src/document.h#L1860-L1920) enforces:
-  - The selected cell has a parent and grandparent.
-  - Both parent and grandparent grids are 1×N or N×1.
-  - An undo step is recorded before calling the swap.
+  - The selected cell has a parent and grandparent (minimum depth requirement).
+  - Both parent and grandparent grids are 1×N or N×1 (unidimensional constraint).
+  - An undo step is recorded before calling the swap, so the operation is fully reversible.
+  - The returned `Selection` is installed, and the layout is reset plus canvas refresh is requested.
+- **Failure modes (user-facing):**
+  - No grandparent → “Cannot move this cell up in the hierarchy.”
+  - Parent grid not 1×N or N×1 → “Can only move this cell from a Nx1 or 1xN grid.”
+  - Grandparent grid not 1×N or N×1 → “Can only move this cell into a Nx1 or 1xN grid.”
+- **Selection rule:** The operation is invoked on the currently selected cell; the returned selection usually points to the promoted/merged tag at the grandparent level.
 
 ## Code Map
 | Area | Location | Role |
 | --- | --- | --- |
-| Grid-level search | [`Grid::FindExact`](../src/grid.h#L867-L888) | Recursively finds the first cell whose text matches the selected tag. |
+| Grid-level search | [`Grid::FindExact`](../src/grid.h#L867-L888) | Recursively finds the first cell whose text matches the selected tag. Walks depth-first through a child grid. |
 | Main algorithm | [`Grid::HierarchySwap`](../src/grid.h#L889-L938) | Promotes each match, rebuilds its parent chain under it, merges like-tag peers, and restarts the search until no matches remain. |
 | Parent cleanup | [`Grid::DeleteTagParent`](../src/grid.h#L940-L964) | Removes the promoted node from its old location, deleting empty 1×1 ancestors on the way up. |
 | Merge helpers | [`Grid::MergeTagCell`](../src/grid.h#L966-L991) and [`Grid::MergeTagAll`](../src/grid.h#L993-L1000) | Merge promoted cells (and their grids) when the target level already contains the same tag. |
 | Parent pointer fix-up | [`Grid::ReParent`](../src/grid.h#L1010-L1014) | Retargets parent pointers whenever a grid is transplanted. |
 | Cell-level match | [`Cell::FindExact`](../src/cell.h#L484-L503) | Base-case exact-text comparison used by `Grid::FindExact`. |
 
+### How these pieces cooperate
+1. `Document::Action()` validates shape/depth, then calls `HierarchySwap` on the grandparent grid, passing the selected cell text.
+2. `HierarchySwap` iterates each direct child cell of that grid that has a subgrid, scanning it with `FindExact`.
+3. When a match is found, the ancestor chain is reversed into nested children (using `ReParent` for correctness), original containers are removed (`DeleteTagParent`), and the promoted tag is merged (`MergeTagCell`/`MergeTagAll`).
+4. The search restarts (`goto lookformore`) so newly created structure is considered; the returned `Selection` points to the first merged tag at the target grid.
+
 ## Algorithm (from the current implementation)
-1. **Search scope:** Start in the grandparent grid of the selected cell (the grid that owns the parent’s parent). Iterate each direct child that has a grid.
-2. **Find first match:** Use `Grid::FindExact(tag)` to locate the first cell in that child grid whose text equals the selected tag (case-sensitive). If none, continue to the next child.
+The following is a line-by-line translation of the active codepath, emphasizing what actually happens rather than a simplified mental model.
+
+1. **Search scope:** Start in the grandparent grid of the selected cell (the grid that owns the parent’s parent). Iterate each direct child that has a grid. The current child being scanned is referenced by `cell` inside the function.
+2. **Find first match:** Use `Grid::FindExact(tag)` to locate the first cell in that child grid whose text equals the selected tag (case-sensitive). If none, continue to the next sibling with a grid.
 3. **Build reversed chain:** For the found cell `f`, walk its parent chain up to (but not including) the grandparent cell that owns the running grid. For each ancestor `p`:
-   - If `p->text` matches the tag, set `done = true` to stop after this promotion and avoid infinite swaps.
-   - Clone `p` into a new cell attached under `f`, transfer `f`’s current grid to that clone, call `ReParent`, and give `f` a fresh 1×1 grid containing the clone. This makes every ancestor become a child nested under the promoted tag.
-4. **Detach the original chain:** Call `DeleteTagParent` repeatedly while walking upward, deleting empty 1×1 ancestors and cleaning up the spot where the match used to live.
+   - If `p->text` matches the tag, set `done = true` to stop after this promotion and avoid infinite swaps through same-named ancestors.
+   - Clone `p` into a new cell attached under `f`, transfer `f`’s current grid to that clone, call `ReParent`, and give `f` a fresh 1×1 grid containing the clone. This makes every ancestor become a child nested under the promoted tag, preserving the original ordering from nearest to farthest parent.
+4. **Detach the original chain:** Call `DeleteTagParent` repeatedly while walking upward, deleting empty 1×1 ancestors and cleaning up the spot where the match used to live. This pruning happens before any merge so that empties are not left behind in the original branch.
 5. **Merge at target level:**
-   - If the target grid was empty, place `f` there.
-   - Otherwise call `MergeTagCell`, which either merges `f` into an existing like-named cell (combining grids via `MergeTagAll` when both have grids) or appends it if no duplicate exists. The first merged/added cell becomes the returned selection.
-6. **Restart search:** `goto lookformore` restarts the sweep so newly created structure is also scanned. The loop ends when no further matches remain or `done` was set because an ancestor already matched the tag.
-7. **Return selection:** The function returns a `Selection` pointing to the promoted/merged tag at the target level.
+   - If the target grid was empty, place `f` there and mark it as the selection.
+   - Otherwise call `MergeTagCell`, which either merges `f` into an existing like-named cell (combining grids via `MergeTagAll` when both have grids) or appends it if no duplicate exists. The first merged/added cell becomes the returned selection, and subsequent merges fold into that.
+6. **Restart search:** `goto lookformore` restarts the sweep so newly created structure is also scanned. The loop ends when no further matches remain or `done` was set because an ancestor already matched the tag (the ancestor-match guard).
+7. **Return selection:** The function returns a `Selection` pointing to the promoted/merged tag at the target level. The caller re-applies the selection and refreshes layout/UI.
 
 ### Behavioral Notes
-- **Grid shape:** The operation only runs on 1×N or N×1 grids (checked before calling the algorithm).
-- **Exact text match:** Matching is literal and case-sensitive (`Cell::FindExact`).
-- **Search order:** Because the search restarts after every promotion, newly merged structures can be processed in subsequent passes.
-- **Ancestor protection:** If an ancestor already has the same tag, `done` stops further promotions after that chain is processed to prevent cycling the same text upward forever.
-- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell.
+- **Grid shape:** The operation only runs on 1×N or N×1 grids (checked before calling the algorithm). This keeps parent/child inversion unambiguous.
+- **Exact text match:** Matching is literal and case-sensitive (`Cell::FindExact`), so “Red” ≠ “red”.
+- **Search order:** Because the search restarts after every promotion, newly merged structures can be processed in subsequent passes; order is depth-first within each child grid.
+- **Ancestor protection:** If an ancestor already has the same tag, `done` stops further promotions after that chain is processed to prevent cycling the same text upward forever. That means repeated-tag chains only promote once.
+- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell. Subgrid merging preserves existing rows/columns as appended sibling rows.
 - **Two-level hops:** Each keypress works against the selected cell’s grandparent grid, so very deep matches may need multiple presses to bubble all the way to the top-level grid where siblings live.
+- **Undo/redo alignment:** An undo point is established before running the algorithm; all structural edits (promote, delete, merge) live inside that single undo step.
+- **Selection stability:** The first promoted/merged cell at the target grid is returned as the new selection; subsequent merges do not change that pointer.
+- **Empty-shell cleanup:** Because `DeleteTagParent` prunes empty 1×1 ancestors, the final tree omits placeholder shells that lost all children during promotion.
+- **Grid ownership:** `ReParent` is called every time a grid is re-attached so parent pointers remain accurate for all transplanted children.
 
-## Corrected Examples
-The following scenarios are constructed directly against the algorithm above; they supersede the earlier examples.
+### Implementation Walkthrough (annotated pseudocode)
+Below is an exact-structure pseudocode sketch that matches the current C++ implementation, including the restart logic:
+
+```
+HierarchySwap(tag):
+    selcell = nullptr
+    done = false
+lookformore:
+    for each cell in this grid where cell has a subgrid:
+        found = cell->grid->FindExact(tag)
+        if not found: continue
+
+        // Reverse the ancestor chain into children under `found`
+        for p = found->parent; p != cell; p = p->parent:
+            if p->text == tag: done = true
+            clone = new Cell(found, p)
+            clone->text = p->text
+            clone->grid = found->grid
+            if clone->grid: clone->grid->ReParent(clone)
+            found->grid = new Grid(1, 1)
+            found->grid->cell = found
+            *found->grid->cells = clone
+
+        // Remove the original chain (prunes empties)
+        for r = found; r && r != cell; r = r->parent->grid->DeleteTagParent(r, cell, found);
+
+        // Merge or insert at the target level
+        if !cells[0]:
+            *cells = found
+            selcell = found
+        else:
+            MergeTagCell(found, selcell)
+
+        if !done: goto lookformore
+    return Selection(this, selcell)
+```
+Key takeaways from this structure:
+- The `goto` intentionally restarts the `for` so the modified grid is scanned anew.
+- `done` only flips when a same-named ancestor exists; otherwise every match reachable from the scanning grid will be processed.
+- The merge target is always the grid on which `HierarchySwap` is called (the grandparent grid chosen by the caller).
+
+## Corrected and Expanded Examples
+The following scenarios are constructed directly against the algorithm above; they supersede the earlier examples and add more stepwise context, plain-text snippets, and XML equivalents to aid regression testing.
 
 ### 1) Baseline: Single Match Promotion
 **Before** (select "Alice", grandparent grid owns `Project`):
@@ -63,6 +122,9 @@ Projects
    └─ Project A
 ```
 - The `Alice` branch moves to the grandparent grid. `Project A` becomes a child under `Alice`. Other siblings stay put.
+- No merge occurs because only one `Alice` exists. Undo reverses the promotion cleanly.
+- Plain text before: `Projects\n  Project A\n    Alice\n  Project B\n    Bob\n`
+- Plain text after: `Projects\n  Project B\n    Bob\n  Alice\n    Project A\n`
 
 ### 2) Multiple Matches at Different Depths (corrected)
 **Before** (grandparent grid is `Colors`):
@@ -93,11 +155,10 @@ Colors
 - First match promotes `Warm` under `Red`, leaving `Orange` behind.
 - Second match promotes `Mixed → Purple` under another `Red`.
 - The two `Red` results merge at the `Colors` level; children from both chains are preserved.
-
-**Alternate representations for testing:**
+- Merge order is deterministic because the scan restarts after each promotion: the first child grid containing a match is processed fully before later siblings are scanned again.
 - Plain text (pre-swap): `colors\n  warm\n    red\n    orange\n  cool\n    blue\n  mixed\n    purple\n      red\n`
 - Plain text (post-swap): `colors\n  warm\n    orange\n  cool\n    blue\n  red\n    warm\n    mixed\n      purple\n`
-- XML (pre/post) mirrors the structures above and helps diffing serialized `.cts` files.
+- XML (pre) mirrors the hierarchical listing; XML (post) reflects the merged `Red` node with `Warm` and `Mixed` children.
 
 ### 3) Single-Path with Repeated Tags
 **Before** (select the deeper "Tag", grandparent grid is the root):
@@ -117,7 +178,8 @@ Root
 ```
 - The inner match is promoted to the root grid.
 - The original outer tag is preserved as a child under the promoted tag (the ancestor clone step).
-- Because an ancestor shared the tag, `done` stops further passes after this promotion.
+- Because an ancestor shared the tag, `done` stops further passes after this promotion. That guard prevents repeatedly flipping the two tags back and forth.
+- Variants to test: add a third nested `Tag` to confirm only one promotion occurs when a same-named ancestor exists.
 
 ### 4) Grid Merge with Existing Hierarchy (corrected)
 **Before** (select any `tag` cell; grandparent grid is `main`):
@@ -150,8 +212,12 @@ main
 ```
 - Each `tag` is promoted; their parent chains (`branch1`, `branch2`) become children under the promoted tags.
 - The promoted tags merge at the `main` level, combining both sub-branches under one `tag`.
+- Empty intermediate grids do not survive because `DeleteTagParent` prunes 1×1 shells.
+- Regression hint: if a third `tag` existed under `branch3`, it would also merge into the single top-level `tag` during the same keypress because the search restarts until no matches remain.
 
 ### 5) Deep Match with Mixed Siblings (depth-dependent passes)
+This example illustrates the “two-level hop” rule: each keypress processes the current selection’s grandparent grid. Deeper matches can require multiple presses to reach the shared ancestor where merging occurs.
+
 **Before (same starting state for all runs):**
 ```
 Departments
@@ -205,7 +271,7 @@ Departments
       └─ Backend
          └─ Team A
 ```
-- One press is enough because the selected cell’s grandparent grid is already `Departments`, so all three matches are discovered and merged in a single pass.
+- One press is enough because the selected cell’s grandparent grid is already `Departments`, so all three matches are discovered and merged in a single pass. The scan restarts after each promotion, but all matches reside directly in the processed scope, so the merge completes immediately.
 
 **If you press F8 on the deep Jamie (under `Engineering → Backend → Team A`):**
 - *After one press (scope = `Backend` grid):*
@@ -245,7 +311,7 @@ Departments
         └─ Backend
            └─ Team A
   ```
-- Each press operates two levels up from the current selection, so the deep match must be swapped three times to reach the shared `Departments` grid where the merge can occur.
+- Each press operates two levels up from the current selection, so the deep match must be swapped three times to reach the shared `Departments` grid where the merge can occur. At that point, all `Jamie` nodes are coalesced.
 
 **Press counts by depth:**
 | Selected `Jamie` | Initial depth relative to `Departments` | Presses to merge all three | Why |
@@ -254,9 +320,65 @@ Departments
 | Mid-depth (`Support → Jamie`) | Grandchild | 1 | Already two levels below `Departments`; one pass finds all matches. |
 | Deep (`Engineering → Backend → Team A → Jamie`) | Great-great-grandchild | 3 | Needs three hops (Backend → Engineering → Departments) because each swap uses the current grandparent grid. |
 
+**Alternate representations for automated checks:**
+- Pre-swap plain text: `Departments\n  Sales\n    Q4\n      Jamie\n  Support\n    Jamie\n  Engineering\n    Backend\n      Team A\n        Jamie\n`
+- Post-merge plain text (after mid-depth or second shallow press or third deep press): `Departments\n  Jamie\n    Sales\n      Q4\n    Support\n    Engineering\n      Backend\n        Team A\n`
+- XML versions can mirror these structures to diff serialized `.cts` files.
+
+### 6) Empty Parent Preservation (edge case)
+**Before** (selected tag has siblings but an empty parent shell):
+```
+Root
+└─ Wrapper
+   └─ Target
+      └─ Payload
+```
+
+**After F8 on "Target":**
+```
+Root
+└─ Target
+   └─ Wrapper
+      └─ Payload
+```
+- Because `Wrapper` was 1×1 and becomes empty after extraction, `DeleteTagParent` removes it during cleanup. Only the meaningful hierarchy remains.
+- This case highlights why the pruning loop runs before merging.
+
+### 7) Mixed Direction Grids (horizontal vs vertical)
+The algorithm treats 1×N and N×1 grids identically. To verify:
+- Create a 1×3 horizontal grid with `A`, `B`, `C` in columns where `B` contains the tag.
+- Create a 3×1 vertical grid with `A`, `B`, `C` in rows where `B` contains the tag.
+- In both layouts, the promotion occurs identically; the constraint only rejects 2×2+ grids.
+
 ## Practical Testing Checklist
-- Verify swaps only run when both parent and grandparent grids are 1×N or N×1.
-- Confirm merged results keep every child grid (use Examples 2 and 4).
-- Exercise the ancestor-tag guard by creating a chain with repeated tags (Example 3).
-- Ensure undo works: perform a swap and Ctrl+Z to restore.
+Use these focused checks to validate behavior after any code change touching the swap logic:
+- Verify swaps only run when both parent and grandparent grids are 1×N or N×1 (exercise all three error messages).
+- Confirm merged results keep every child grid (use Examples 2 and 4 to see that no payload is dropped during merges).
+- Exercise the ancestor-tag guard by creating a chain with repeated tags (Example 3) and ensure only one promotion occurs.
+- Walk the depth-dependent paths (Example 5) to ensure press counts still match the two-level-hop rule.
+- Ensure undo works: perform a swap and Ctrl+Z to restore; redo should reapply the promotion without divergence.
+- Serialize to `.cts` and diff the XML snippets above to confirm structural equivalence in file form.
+
+## FAQ (code-grounded)
+- **Why restart with `goto`?** The grid topology changes during promotion and merge. Restarting ensures newly attached grids are eligible for immediate scanning without complex iterator management.
+- **Why prune empty 1×1 grids?** Promotion often hollows out ancestor shells. Cleaning them avoids empty visual rows/columns and keeps selection paths short.
+- **Why does an ancestor tag stop further passes?** Without `done`, a repeated tag could ping-pong upward indefinitely. The guard enforces a single promotion when the chain already contains the tag.
+- **Can swaps occur across unrelated branches?** No. The scope is the selected cell’s grandparent grid; only descendants of each child grid under that grandparent are scanned.
+- **What happens when both merge candidates have grids?** `MergeTagAll` merges every cell from the source grid into the destination grid, preserving ordering; if one side lacks a grid, the other grid is kept intact.
+
+## Quick Regression Matrix (who to press where)
+| Scenario | Selection | Expected presses | Expected top-level result |
+| --- | --- | --- | --- |
+| Single match | `Alice` under `Project A` | 1 | `Alice` at Projects with `Project A` child |
+| Two matches, differing depths | Any `Red` | 1 | Single `Red` at `Colors` with `Warm` and `Mixed → Purple` children |
+| Repeated ancestor tag | Inner `Tag` | 1 | Two nested `Tag` nodes under `Root`, no further passes |
+| Parallel tag merges | Any `tag` under `branch1/2` | 1 | Single `tag` under `main` with both branches merged |
+| Depth-varied siblings | Shallow `Jamie` | 2 | Single `Jamie` under `Departments` with all departments beneath |
+| Depth-varied siblings | Mid `Jamie` | 1 | Same as above |
+| Depth-varied siblings | Deep `Jamie` | 3 | Same as above |
+
+## Notes for future contributors
+- Keep the examples synchronized with the actual algorithm lines in `grid.h`. Small logic shifts (e.g., moving the cleanup loop) can flip example outcomes; update both code references and diagrams together.
+- When adding optimizations, preserve the restart semantics unless you can formally prove equivalence—most example outcomes depend on that search ordering.
+- If you adjust merge order or child insertion, regenerate the plain-text/XML snippets so automated diff tests remain accurate.
 
