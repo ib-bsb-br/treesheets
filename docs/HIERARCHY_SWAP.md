@@ -3,18 +3,20 @@
 This document replaces prior hierarchy-swap docs and restates the feature directly from the current source code. It covers prerequisites, code entry points, algorithm flow, corrected end-to-end examples (including the cases that previously contained mistakes), and practical test recipes tied to the implementation. The intent is to mirror what the code does today, not an aspirational design.
 
 ## Command Surface
-- **Menu / Shortcut:** Organization → Hierarchy Swap (F8), defined in [`tsframe.h`](../src/tsframe.h#L333-L348). The label reads “Hierarchy Swap” and the tooltip explains that all cells with the selected text are swapped with their parents at the current level (or above).
-- **Action ID:** `A_HSWAP` in [`main.cpp`](../src/main.cpp#L130-L180). This ID connects the menu, keyboard shortcut, and dispatcher switch statement.
+- **Menu / Shortcut:** Organization → Hierarchy Swap (F8), defined in [`tsframe.h`](../src/tsframe.h#L333-L348). The label reads “Hierarchy Swap” and the tooltip explains that all cells with the selected text are swapped with their parents at the current level (or above). The menu entry lives under the “Organization” cascade, grouped with flattening and hierarchify commands.
+- **Action ID:** `A_HSWAP` in [`main.cpp`](../src/main.cpp#L130-L180). This ID connects the menu, keyboard shortcut, and dispatcher switch statement; it is also used in the toolbar accelerator table.
 - **Validation and dispatch:** `Document::Action()` at [`document.h`](../src/document.h#L1860-L1920) enforces:
-  - The selected cell has a parent and grandparent (minimum depth requirement).
-  - Both parent and grandparent grids are 1×N or N×1 (unidimensional constraint).
+  - The selected cell has a parent and grandparent (minimum depth requirement) and therefore the command is disabled at the document root.
+  - Both parent and grandparent grids are 1×N or N×1 (unidimensional constraint). If either grid fails the shape test, the action aborts before any structural edits occur.
   - An undo step is recorded before calling the swap, so the operation is fully reversible.
-  - The returned `Selection` is installed, and the layout is reset plus canvas refresh is requested.
+  - The returned `Selection` is installed, and the layout is reset plus canvas refresh is requested to reflect the new tree topology.
 - **Failure modes (user-facing):**
   - No grandparent → “Cannot move this cell up in the hierarchy.”
   - Parent grid not 1×N or N×1 → “Can only move this cell from a Nx1 or 1xN grid.”
   - Grandparent grid not 1×N or N×1 → “Can only move this cell into a Nx1 or 1xN grid.”
-- **Selection rule:** The operation is invoked on the currently selected cell; the returned selection usually points to the promoted/merged tag at the grandparent level.
+  - Selection has no grid ancestry because the document is a single flat row/column → the menu item will be disabled due to the grandparent check.
+- **Selection rule:** The operation is invoked on the currently selected cell; the returned selection usually points to the promoted/merged tag at the grandparent level. If merges occur, the earliest tag inserted into the target grid becomes the selection anchor and is reused for subsequent merges.
+- **UI invariants to watch:** because `HierarchySwap` runs inside a single undo step, the canvas redraw and layout reset happen once per keypress, even when multiple promotions/merges occur via `goto lookformore`.
 
 ## Code Map
 | Area | Location | Role |
@@ -48,16 +50,17 @@ The following is a line-by-line translation of the active codepath, emphasizing 
 7. **Return selection:** The function returns a `Selection` pointing to the promoted/merged tag at the target level. The caller re-applies the selection and refreshes layout/UI.
 
 ### Behavioral Notes
-- **Grid shape:** The operation only runs on 1×N or N×1 grids (checked before calling the algorithm). This keeps parent/child inversion unambiguous.
-- **Exact text match:** Matching is literal and case-sensitive (`Cell::FindExact`), so “Red” ≠ “red”.
-- **Search order:** Because the search restarts after every promotion, newly merged structures can be processed in subsequent passes; order is depth-first within each child grid.
-- **Ancestor protection:** If an ancestor already has the same tag, `done` stops further promotions after that chain is processed to prevent cycling the same text upward forever. That means repeated-tag chains only promote once.
-- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell. Subgrid merging preserves existing rows/columns as appended sibling rows.
-- **Two-level hops:** Each keypress works against the selected cell’s grandparent grid, so very deep matches may need multiple presses to bubble all the way to the top-level grid where siblings live.
-- **Undo/redo alignment:** An undo point is established before running the algorithm; all structural edits (promote, delete, merge) live inside that single undo step.
-- **Selection stability:** The first promoted/merged cell at the target grid is returned as the new selection; subsequent merges do not change that pointer.
-- **Empty-shell cleanup:** Because `DeleteTagParent` prunes empty 1×1 ancestors, the final tree omits placeholder shells that lost all children during promotion.
-- **Grid ownership:** `ReParent` is called every time a grid is re-attached so parent pointers remain accurate for all transplanted children.
+- **Grid shape:** The operation only runs on 1×N or N×1 grids (checked before calling the algorithm). This keeps parent/child inversion unambiguous and ensures `DeleteCells` can safely collapse rows/columns when null slots appear.
+- **Exact text match:** Matching is literal and case-sensitive (`Cell::FindExact`), so “Red” ≠ “red”. Hidden formatting (bold/italic) does not affect the match because only `text.t` is compared.
+- **Search order:** Because the search restarts after every promotion, newly merged structures can be processed in subsequent passes; order is depth-first within each child grid. This restart is why multi-match merges can happen within one keypress.
+- **Ancestor protection:** If an ancestor already has the same tag, `done` stops further promotions after that chain is processed to prevent cycling the same text upward forever. That means repeated-tag chains only promote once, even when additional matches exist deeper in the tree.
+- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell. Subgrid merging preserves existing rows/columns as appended sibling rows, and `MergeTagAll` will recursively merge duplicate-tag grandchildren as well.
+- **Two-level hops:** Each keypress works against the selected cell’s grandparent grid, so very deep matches may need multiple presses to bubble all the way to the top-level grid where siblings live. The “press-count” tables below assume this two-level stride.
+- **Undo/redo alignment:** An undo point is established before running the algorithm; all structural edits (promote, delete, merge) live inside that single undo step. Redo will replay the full set of promotions, merges, and deletions.
+- **Selection stability:** The first promoted/merged cell at the target grid is returned as the new selection; subsequent merges do not change that pointer. This stability matters for keyboard users repeating swaps.
+- **Empty-shell cleanup:** Because `DeleteTagParent` prunes empty 1×1 ancestors, the final tree omits placeholder shells that lost all children during promotion. When the grid has multiple rows, empty rows are physically removed via `DeleteCells`.
+- **Grid ownership:** `ReParent` is called every time a grid is re-attached so parent pointers remain accurate for all transplanted children. This invariant is critical for subsequent operations such as copy/paste or further swaps.
+- **Shape preservation for bystanders:** Cells in the grandparent grid that do not contain a matching tag remain in place (apart from row removal when a null slot is deleted). Use this property to predict stable ordering of unrelated siblings.
 
 ### Implementation Walkthrough (annotated pseudocode)
 Below is an exact-structure pseudocode sketch that matches the current C++ implementation, including the restart logic:
@@ -349,6 +352,61 @@ The algorithm treats 1×N and N×1 grids identically. To verify:
 - Create a 1×3 horizontal grid with `A`, `B`, `C` in columns where `B` contains the tag.
 - Create a 3×1 vertical grid with `A`, `B`, `C` in rows where `B` contains the tag.
 - In both layouts, the promotion occurs identically; the constraint only rejects 2×2+ grids.
+
+### 8) Flat Sibling Merge (single pass, no depth hops)
+This mirrors a shallow multi-match merge with no ancestor reuse beyond the shared parent. The grandparent grid is the document root; its only child with a subgrid is `Root`.
+
+**Before** (select any `Tag`; grandparent grid = document root, scanning the `Root` grid):
+```
+<doc root>
+└─ Root
+   ├─ Tag
+   ├─ Tag
+   ├─ Tag
+   └─ Other
+```
+
+**After one F8 on any `Tag`:**
+```
+<doc root>
+├─ Root
+│  └─ Other
+└─ Tag
+   ├─ Root
+   ├─ Root
+   └─ Root
+```
+- Each `Tag` is promoted out of `Root` and merged at the document root grid in a single pass because the restart (`goto lookformore`) continues scanning until no matches remain.
+- The ancestor-clone step adds a `Root` child under every promoted `Tag`; when merges occur, the three `Root` clones accumulate under the single surviving `Tag`.
+- `Root` keeps only the non-matching `Other` child because `DeleteTagParent` removes each `Tag` row from its grid but does not delete the grid itself (it is not 1×1).
+- Regression tip: if one of the `Tag` nodes had its own grid, that grid would merge into the surviving `Tag` as well via `MergeTagAll`.
+
+### 9) Partial Empty Parents (slot deletion)
+This showcases how null slots are deleted when a promoted child leaves behind an empty 1×1 grid, while non-empty siblings remain.
+
+**Before** (select the first `Target`; grandparent grid = `Main`’s parent):
+```
+Main
+├─ Holder1
+│  ├─ Target
+│  └─ Sibling
+└─ Holder2
+   └─ Target
+```
+
+**After F8 on `Target`:**
+```
+Main
+├─ Holder1
+│  └─ Sibling
+└─ Target
+   ├─ Holder1
+   └─ Holder2
+```
+- The first promotion clones `Holder1` under the new `Target` and removes the original `Target` row, leaving `Holder1` with only `Sibling`.
+- The second promotion clones `Holder2` under a second `Target`; because `Holder2`’s grid becomes empty (1×1), `DeleteTagParent` removes that grid and returns the `Holder2` cell to the caller.
+- `MergeTagCell` folds the second promoted `Target` into the first, merging the two cloned parents (`Holder1`, `Holder2`) under the surviving `Target` while keeping the `Holder1` branch with `Sibling` intact.
+- This example is a good probe for the `DeleteCells` path that removes a null slot from a multi-row grid and for the merge helper when one parent clone already exists.
 
 ## Practical Testing Checklist
 Use these focused checks to validate behavior after any code change touching the swap logic:

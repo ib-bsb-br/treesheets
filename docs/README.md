@@ -9,9 +9,9 @@ Complete, source-backed reference for the hierarchy swap command:
 - Command surface (menu/shortcut, action ID, validation)
 - File map and key functions with line anchors
 - Algorithm walkthrough grounded in current code
-- Corrected and expanded examples (multi-depth merges, depth-dependent multi-pass scenarios, grid merges)
+- Corrected and expanded examples (multi-depth merges, depth-dependent multi-pass scenarios, grid merges, flat-sibling merges, null-slot cleanup)
 - Alternate representations (plain text/XML snippets) for regression checks
-- Testing checklist
+- Testing checklist and regression matrix
 
 ### [Answer Summary](ANSWER_SUMMARY.md)
 High-level overview of the hierarchy swap feature, source file footprint, and why the feature exists.
