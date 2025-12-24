@@ -196,6 +196,7 @@ TreeSheets is a "hierarchical spreadsheet" - the hierarchy swap feature embodies
 - ✓ Requires unidimensional grids (1xN or Nx1)
 - ✓ Requires minimum 2-level depth (grandparent must exist)
 - ✓ Uses exact case-sensitive text matching
+- ✓ Operates on the selected cell’s **grandparent grid**, so deeper matches may require multiple swaps to reach the level where siblings merge
 - ✓ Not thread-safe (UI thread only)
 
 ### Innovation
@@ -208,9 +209,8 @@ The algorithm innovatively uses:
 
 ## Documentation
 
-For complete details, see:
-- **HIERARCHY_SWAP_FEATURE.md** - Comprehensive technical documentation
-- **HIERARCHY_SWAP_EXAMPLES.md** - Visual examples and walkthrough
+For complete, current details, see:
+- **HIERARCHY_SWAP.md** - Deep dive with corrected examples and algorithm walkthroughs
 - **README.md** - Quick reference and index
 
 ---
