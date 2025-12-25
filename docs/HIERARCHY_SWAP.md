@@ -54,7 +54,7 @@ The following is a line-by-line translation of the active codepath, emphasizing 
 - **Exact text match:** Matching is literal and case-sensitive (`Cell::FindExact`), so “Red” ≠ “red”. Hidden formatting (bold/italic) does not affect the match because only `text.t` is compared.
 - **Search order:** Because the search restarts after every promotion, newly merged structures can be processed in subsequent passes; order is depth-first within each child grid. This restart is why multi-match merges can happen within one keypress.
 - **Ancestor protection:** If an ancestor already has the same tag, `done` stops further promotions after that chain is processed to prevent cycling the same text upward forever. That means repeated-tag chains only promote once, even when additional matches exist deeper in the tree.
-- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell. Subgrid merging preserves existing rows/columns as appended sibling rows, and `MergeTagAll` will recursively merge duplicate-tag grandchildren as well.
+- **Merge semantics:** When the target grid already contains the tag, children from both structures are merged under the surviving tag cell. Subgrid merging preserves existing rows/columns as appended sibling rows, and `MergeTagAll` will recursively merge duplicate-tag grandchildren as well. If a promoted match brings in a cloned ancestor with the same name but no grid, `MergeTagCell` short-circuits on the first match and leaves only one copy.
 - **Two-level hops:** Each keypress works against the selected cell’s grandparent grid, so very deep matches may need multiple presses to bubble all the way to the top-level grid where siblings live. The “press-count” tables below assume this two-level stride.
 - **Undo/redo alignment:** An undo point is established before running the algorithm; all structural edits (promote, delete, merge) live inside that single undo step. Redo will replay the full set of promotions, merges, and deletions.
 - **Selection stability:** The first promoted/merged cell at the target grid is returned as the new selection; subsequent merges do not change that pointer. This stability matters for keyboard users repeating swaps.
@@ -102,6 +102,7 @@ Key takeaways from this structure:
 - The `goto` intentionally restarts the `for` so the modified grid is scanned anew.
 - `done` only flips when a same-named ancestor exists; otherwise every match reachable from the scanning grid will be processed.
 - The merge target is always the grid on which `HierarchySwap` is called (the grandparent grid chosen by the caller).
+- The loop condition `p != cell` stops cloning at the grid’s owning cell (the grandparent), so only ancestors strictly below that owning cell are nested under the promoted tag.
 
 ## Corrected and Expanded Examples
 The following scenarios are constructed directly against the algorithm above; they supersede the earlier examples and add more stepwise context, plain-text snippets, and XML equivalents to aid regression testing.
