@@ -372,14 +372,12 @@ This mirrors a shallow multi-match merge with no ancestor reuse beyond the share
 ├─ Root
 │  └─ Other
 └─ Tag
-   ├─ Root
-   ├─ Root
    └─ Root
 ```
 - Each `Tag` is promoted out of `Root` and merged at the document root grid in a single pass because the restart (`goto lookformore`) continues scanning until no matches remain.
-- The ancestor-clone step adds a `Root` child under every promoted `Tag`; when merges occur, the three `Root` clones accumulate under the single surviving `Tag`.
+- The ancestor-clone step adds a `Root` child under every promoted `Tag`, but because clones share the same text and carry no grids, `MergeTagCell` collapses them into a single `Root` child on the surviving `Tag`.
 - `Root` keeps only the non-matching `Other` child because `DeleteTagParent` removes each `Tag` row from its grid but does not delete the grid itself (it is not 1×1).
-- Regression tip: if one of the `Tag` nodes had its own grid, that grid would merge into the surviving `Tag` as well via `MergeTagAll`.
+- Regression tip: if one of the `Tag` nodes had its own grid, that grid would merge into the surviving `Tag` as well via `MergeTagAll`; duplicates without grids are dropped as shown here.
 
 ### 9) Partial Empty Parents (slot deletion)
 This showcases how null slots are deleted when a promoted child leaves behind an empty 1×1 grid, while non-empty siblings remain.
