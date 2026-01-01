@@ -1,7 +1,3 @@
-# Hierarchy Swap Deep Dive
-
-This document replaces prior hierarchy-swap docs and restates the feature directly from the current source code. It covers prerequisites, code entry points, algorithm flow, corrected end-to-end examples (including the cases that previously contained mistakes), and practical test recipes tied to the implementation. The intent is to mirror what the code does today, not an aspirational design.
-
 ## Command Surface
 - **Menu / Shortcut:** Organization → Hierarchy Swap (F8), defined in [`tsframe.h`](../src/tsframe.h#L333-L348). The label reads “Hierarchy Swap” and the tooltip explains that all cells with the selected text are swapped with their parents at the current level (or above). The menu entry lives under the “Organization” cascade, grouped with flattening and hierarchify commands.
 - **Action ID:** `A_HSWAP` in [`main.cpp`](../src/main.cpp#L130-L180). This ID connects the menu, keyboard shortcut, and dispatcher switch statement; it is also used in the toolbar accelerator table.
