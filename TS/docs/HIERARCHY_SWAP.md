@@ -100,57 +100,57 @@ Key takeaways from this structure:
 - The merge target is always the grid on which `HierarchySwap` is called (the grandparent grid chosen by the caller).
 - The loop condition `p != cell` stops cloning at the grid’s owning cell (the grandparent), so only ancestors strictly below that owning cell are nested under the promoted tag.
 
-## Corrected and Expanded Examples
-The following scenarios are constructed directly against the algorithm above; they supersede the earlier examples and add more stepwise context, plain-text snippets, and XML equivalents to aid regression testing.
+## Examples
+The following scenarios are constructed directly against the algorithm above:
 
 ### 1) Baseline: Single Match Promotion
 **Before** (select "Alice", grandparent grid owns `Project`):
 ```
 Projects
-├─ Project A
-│  └─ Alice
-└─ Project B
-   └─ Bob
+   Project A
+      Alice
+   Project B
+      Bob
 ```
 
 **After F8 on "Alice":**
 ```
 Projects
-├─ Project B
-│  └─ Bob
-└─ Alice
-   └─ Project A
+   Project B
+      Bob
+   Alice
+      Project A
 ```
 - The `Alice` branch moves to the grandparent grid. `Project A` becomes a child under `Alice`. Other siblings stay put.
 - No merge occurs because only one `Alice` exists. Undo reverses the promotion cleanly.
 - Plain text before: `Projects\n  Project A\n    Alice\n  Project B\n    Bob\n`
 - Plain text after: `Projects\n  Project B\n    Bob\n  Alice\n    Project A\n`
 
-### 2) Multiple Matches at Different Depths (corrected)
+### 2) Multiple Matches at Different Depths
 **Before** (grandparent grid is `Colors`):
 ```
 Colors
-├─ Warm
-│  ├─ Red (match 1)
-│  └─ Orange
-├─ Cool
-│  └─ Blue
-└─ Mixed
-   └─ Purple
-      └─ Red (match 2)
+   Warm
+      Red
+      Orange
+   Cool
+      Blue
+   Mixed
+      Purple
+         Red
 ```
 
 **After F8 on either "Red":**
 ```
 Colors
-├─ Warm
-│  └─ Orange
-├─ Cool
-│  └─ Blue
-└─ Red
-   ├─ Warm
-   └─ Mixed
-      └─ Purple
+   Warm
+      Orange
+   Cool
+      Blue
+   Red
+      Warm
+      Mixed
+         Purple
 ```
 - First match promotes `Warm` under `Red`, leaving `Orange` behind.
 - Second match promotes `Mixed → Purple` under another `Red`.
@@ -164,51 +164,51 @@ Colors
 **Before** (select the deeper "Tag", grandparent grid is the root):
 ```
 Root
-└─ Tag (outer)
-   └─ Tag (inner)
-      └─ Item
+   Tag
+      Tag
+         Item
 ```
 
 **After F8 on inner "Tag":**
 ```
 Root
-└─ Tag
-   └─ Tag
-      └─ Item
+   Tag
+      Tag
+         Item
 ```
 - The inner match is promoted to the root grid.
 - The original outer tag is preserved as a child under the promoted tag (the ancestor clone step).
 - Because an ancestor shared the tag, `done` stops further passes after this promotion. That guard prevents repeatedly flipping the two tags back and forth.
 - Variants to test: add a third nested `Tag` to confirm only one promotion occurs when a same-named ancestor exists.
 
-### 4) Grid Merge with Existing Hierarchy (corrected)
+### 4) Grid Merge with Existing Hierarchy 
 **Before** (select any `tag` cell; grandparent grid is `main`):
 ```
 main
-├─ branch1
-│  └─ tag
-│     ├─ a
-│     ├─ b
-│     └─ c
-└─ branch2
-   └─ tag
-      ├─ d
-      ├─ e
-      └─ f
+   branch1
+      tag
+         a
+         b
+         c
+   branch2
+      tag
+         d
+         e
+         f
 ```
 
 **After F8 on `tag`:**
 ```
 main
-└─ tag
-   ├─ branch1
-   │  ├─ a
-   │  ├─ b
-   │  └─ c
-   └─ branch2
-      ├─ d
-      ├─ e
-      └─ f
+   tag
+      branch1
+         a
+         b
+         c
+      branch2
+         d
+         e
+         f
 ```
 - Each `tag` is promoted; their parent chains (`branch1`, `branch2`) become children under the promoted tags.
 - The promoted tags merge at the `main` level, combining both sub-branches under one `tag`.
@@ -221,41 +221,41 @@ This example illustrates the “two-level hop” rule: each keypress processes t
 **Before (same starting state for all runs):**
 ```
 Departments
-├─ Sales
-│  └─ Q4
-│     └─ Jamie   ← "shallow" (two presses to reach Departments)
-├─ Support
-│  └─ Jamie      ← "mid-depth" (one press to reach Departments)
-└─ Engineering
-   └─ Backend
-      └─ Team A
-         └─ Jamie   ← "deep" (three presses to reach Departments)
+   Sales
+      Q4
+         Jamie
+   Support
+      Jamie
+   Engineering
+      Backend
+         Team A
+            Jamie
 ```
 
 **If you press F8 on the shallow Jamie (under `Sales → Q4`):**
 - *After the first press (scope = `Sales` grid):*
   ```
   Departments
-  ├─ Sales
-  │  └─ Jamie
-  │     └─ Q4
-  ├─ Support
-  │  └─ Jamie
-  └─ Engineering
-     └─ Backend
-        └─ Team A
-           └─ Jamie
+     Sales
+        Jamie
+           Q4
+     Support
+        Jamie
+     Engineering
+        Backend
+           Team A
+              Jamie
   ```
 - *After the second press (scope = `Departments` grid):*
   ```
   Departments
-  └─ Jamie
-     ├─ Sales
-     │  └─ Q4
-     ├─ Support
-     └─ Engineering
-        └─ Backend
-           └─ Team A
+     Jamie
+        Sales
+           Q4
+        Support
+        Engineering
+           Backend
+              Team A
   ```
   - First press bubbles the match two levels (grandparent = `Sales`).
   - Second press runs at `Departments`, finds all three `Jamie` matches, promotes each, and merges them at the top level.
@@ -263,13 +263,13 @@ Departments
 **If you press F8 on the mid-depth Jamie (under `Support`):**
 ```
 Departments
-└─ Jamie
-   ├─ Sales
-   │  └─ Q4
-   ├─ Support
-   └─ Engineering
-      └─ Backend
-         └─ Team A
+   Jamie
+      Sales
+         Q4
+      Support
+      Engineering
+         Backend
+            Team A
 ```
 - One press is enough because the selected cell’s grandparent grid is already `Departments`, so all three matches are discovered and merged in a single pass. The scan restarts after each promotion, but all matches reside directly in the processed scope, so the merge completes immediately.
 
@@ -277,39 +277,39 @@ Departments
 - *After one press (scope = `Backend` grid):*
   ```
   Departments
-  ├─ Sales
-  │  └─ Q4
-  │     └─ Jamie
-  ├─ Support
-  │  └─ Jamie
-  └─ Engineering
-     └─ Backend
-        └─ Jamie
-           └─ Team A
+     Sales
+        Q4
+           Jamie
+     Support
+        Jamie
+     Engineering
+        Backend
+           Jamie
+              Team A
   ```
 - *After two presses (scope = `Engineering` grid):*
   ```
   Departments
-  ├─ Sales
-  │  └─ Q4
-  │     └─ Jamie
-  ├─ Support
-  │  └─ Jamie
-  └─ Engineering
-     └─ Jamie
-        └─ Backend
-           └─ Team A
+     Sales
+        Q4
+           Jamie
+     Support
+        Jamie
+     Engineering
+        Jamie
+           Backend
+              Team A
   ```
 - *After three presses (scope = `Departments` grid):*
   ```
   Departments
-  └─ Jamie
-     ├─ Sales
-     │  └─ Q4
-     ├─ Support
-     └─ Engineering
-        └─ Backend
-           └─ Team A
+     Jamie
+        Sales
+           Q4
+        Support
+        Engineering
+           Backend
+              Team A
   ```
 - Each press operates two levels up from the current selection, so the deep match must be swapped three times to reach the shared `Departments` grid where the merge can occur. At that point, all `Jamie` nodes are coalesced.
 
@@ -325,78 +325,53 @@ Departments
 - Post-merge plain text (after mid-depth or second shallow press or third deep press): `Departments\n  Jamie\n    Sales\n      Q4\n    Support\n    Engineering\n      Backend\n        Team A\n`
 - XML versions can mirror these structures to diff serialized `.cts` files.
 
-### 6) Empty Parent Preservation (edge case)
-**Before** (selected tag has siblings but an empty parent shell):
-```
-Root
-└─ Wrapper
-   └─ Target
-      └─ Payload
-```
-
-**After F8 on "Target":**
-```
-Root
-└─ Target
-   └─ Wrapper
-      └─ Payload
-```
-- Because `Wrapper` was 1×1 and becomes empty after extraction, `DeleteTagParent` removes it during cleanup. Only the meaningful hierarchy remains.
-- This case highlights why the pruning loop runs before merging.
-
-### 7) Mixed Direction Grids (horizontal vs vertical)
-The algorithm treats 1×N and N×1 grids identically. To verify:
-- Create a 1×3 horizontal grid with `A`, `B`, `C` in columns where `B` contains the tag.
-- Create a 3×1 vertical grid with `A`, `B`, `C` in rows where `B` contains the tag.
-- In both layouts, the promotion occurs identically; the constraint only rejects 2×2+ grids.
-
-### 8) Flat Sibling Merge (single pass, no depth hops)
+### 6) Flat Sibling Merge (single pass, no depth hops)
 This mirrors a shallow multi-match merge with no ancestor reuse beyond the shared parent. The grandparent grid is the document root; its only child with a subgrid is `Root`.
 
 **Before** (select any `Tag`; grandparent grid = document root, scanning the `Root` grid):
 ```
 <doc root>
-└─ Root
-   ├─ Tag
-   ├─ Tag
-   ├─ Tag
-   └─ Other
+   Root
+      Tag
+      Tag
+      Tag
+      Other
 ```
 
 **After one F8 on any `Tag`:**
 ```
 <doc root>
-├─ Root
-│  └─ Other
-└─ Tag
-   └─ Root
+   Root
+      Other
+   Tag
+      Root
 ```
 - Each `Tag` is promoted out of `Root` and merged at the document root grid in a single pass because the restart (`goto lookformore`) continues scanning until no matches remain.
 - The ancestor-clone step adds a `Root` child under every promoted `Tag`, but because clones share the same text and carry no grids, `MergeTagCell` collapses them into a single `Root` child on the surviving `Tag`.
 - `Root` keeps only the non-matching `Other` child because `DeleteTagParent` removes each `Tag` row from its grid but does not delete the grid itself (it is not 1×1).
 - Regression tip: if one of the `Tag` nodes had its own grid, that grid would merge into the surviving `Tag` as well via `MergeTagAll`; duplicates without grids are dropped as shown here.
 
-### 9) Partial Empty Parents (slot deletion)
+### 7) Partial Empty Parents (slot deletion)
 This showcases how null slots are deleted when a promoted child leaves behind an empty 1×1 grid, while non-empty siblings remain.
 
 **Before** (select the first `Target`; grandparent grid = `Main`’s parent):
 ```
 Main
-├─ Holder1
-│  ├─ Target
-│  └─ Sibling
-└─ Holder2
-   └─ Target
+   Holder1
+      Target
+      Sibling
+   Holder2
+      Target
 ```
 
 **After F8 on `Target`:**
 ```
 Main
-├─ Holder1
-│  └─ Sibling
-└─ Target
-   ├─ Holder1
-   └─ Holder2
+   Holder1
+      Sibling
+   Target
+      Holder1
+      Holder2
 ```
 - The first promotion clones `Holder1` under the new `Target` and removes the original `Target` row, leaving `Holder1` with only `Sibling`.
 - The second promotion clones `Holder2` under a second `Target`; because `Holder2`’s grid becomes empty (1×1), `DeleteTagParent` removes that grid and returns the `Holder2` cell to the caller.
@@ -429,9 +404,3 @@ Use these focused checks to validate behavior after any code change touching the
 | Depth-varied siblings | Shallow `Jamie` | 2 | Single `Jamie` under `Departments` with all departments beneath |
 | Depth-varied siblings | Mid `Jamie` | 1 | Same as above |
 | Depth-varied siblings | Deep `Jamie` | 3 | Same as above |
-
-## Notes for future contributors
-- Keep the examples synchronized with the actual algorithm lines in `grid.h`. Small logic shifts (e.g., moving the cleanup loop) can flip example outcomes; update both code references and diagrams together.
-- When adding optimizations, preserve the restart semantics unless you can formally prove equivalence—most example outcomes depend on that search ordering.
-- If you adjust merge order or child insertion, regenerate the plain-text/XML snippets so automated diff tests remain accurate.
-
